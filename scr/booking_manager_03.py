@@ -23,7 +23,11 @@ class BookingManager:
         self.passengers_tree = passengers_tree
         self.flights_stack = flights_stack
         self.confirmed_passengers_stack = confirmed_passengers_stack
-        self.waitlisted_passengers_queue = waitlisted_passengers_queue
+        self.waitlisted_passengers_queue = {
+            "First": deque(),
+            "Business": deque(),
+            "Economy": deque()
+        }  # Separate waitlists for each class
         self.airport_data = airport_data  # Airport data from AirlineResDB
         self.flight_data = flight_data  # Flight and fare data from AirlineResDB
 
@@ -45,11 +49,11 @@ class BookingManager:
         if not self.is_seat_number_available(flight_number, seat_class):
             # No seats available, add to the waitlist
             waitlisted_passenger = [passenger[0], passenger[1], flight_number, seat_class]
-            self.waitlisted_passengers_queue.append(waitlisted_passenger)
+            self.waitlisted_passengers_queue[seat_class].append(waitlisted_passenger)
             return f"Passenger {passenger[1]} added to waitlist for flight {flight_number} in {seat_class} class."
 
         # Seats are available, book the passenger
-        seat_number = f"{seat_class}-{len(self.confirmed_passengers_stack) + 1}"  # Generate a seat number
+        seat_number = self.generate_seat_number(flight_number, seat_class)
         confirmed_passenger = [passenger[0], passenger[1], flight_number, seat_number, seat_class]
         self.confirmed_passengers_stack.append(confirmed_passenger)
         return f"Passenger {passenger[1]} booked on flight {flight_number} with seat number {seat_number} in {seat_class} class."
@@ -69,17 +73,17 @@ class BookingManager:
         temp_stack = []
         while self.confirmed_passengers_stack:
             passenger = self.confirmed_passengers_stack.pop()
-            if passenger[0] == passenger_id and passenger[4] == flight_number:
+            if passenger[0] == passenger_id and passenger[2] == flight_number:
                 found = True
-                flight_node = self.flights_graph.get_node(flight_number)
-                if flight_node:
-                    flight_node.remove_data(passenger)
                 break
             temp_stack.append(passenger)
 
         while temp_stack:
             self.confirmed_passengers_stack.append(temp_stack.pop())
 
+        if found:
+            # Manage the waitlist for the flight
+            self.manage_waitlist(flight_number)
         return found
 
     def manage_waitlist(self, flight_number):
@@ -93,19 +97,19 @@ class BookingManager:
         - A list of strings indicating the booking status of waitlisted passengers.
         """
         messages = []
-        temp_queue = deque()
-        while self.waitlisted_passengers_queue:
-            passenger = self.waitlisted_passengers_queue.popleft()
-            if passenger[3] == flight_number:
-                if self.is_seat_number_available(flight_number, passenger[-1]):
-                    self.book_passenger(passenger, flight_number, passenger[-1])
-                    messages.append(f"Waitlisted passenger {passenger[1]} booked on flight {flight_number}.")
+        for seat_class, queue in self.waitlisted_passengers_queue.items():
+            temp_queue = deque()
+            while queue:
+                passenger = queue.popleft()
+                if passenger[2] == flight_number:
+                    if self.is_seat_number_available(flight_number, seat_class):
+                        self.book_passenger(passenger, flight_number, seat_class)
+                        messages.append(f"Waitlisted passenger {passenger[1]} booked on flight {flight_number} in {seat_class} class.")
+                    else:
+                        temp_queue.append(passenger)
                 else:
                     temp_queue.append(passenger)
-            else:
-                temp_queue.append(passenger)
-
-        self.waitlisted_passengers_queue = temp_queue
+            self.waitlisted_passengers_queue[seat_class] = temp_queue
         return messages
 
     def get_flight_info(self, flight_number):
@@ -121,20 +125,20 @@ class BookingManager:
         flight_node = self.flights_graph.get_node(flight_number)
         if flight_node:
             flight_data = flight_node.data
-            departure_airport = self.airport_data.get(flight_data[1], {})
-            arrival_airport = self.airport_data.get(flight_data[2], {})
+            departure_airport = self.airport_data.get(flight_data["departure"], {})
+            arrival_airport = self.airport_data.get(flight_data["arrival"], {})
             airline = self.flight_data.get(flight_number, {}).get("Airline", "Unknown")
             info_lines = [
-                f"Flight Number: {flight_data[0]}",
+                f"Flight Number: {flight_number}",
                 f"Airline: {airline}",
-                f"Departure Airport: {departure_airport.get('Name', flight_data[1])} ({flight_data[1]})",
-                f"Arrival Airport: {arrival_airport.get('Name', flight_data[2])} ({flight_data[2]})",
-                f"Date and Time: {flight_data[3]}",
-                "Passenger Information:"
+                f"Departure Airport: {departure_airport.get('Name', flight_data['departure'])} ({flight_data['departure']})",
+                f"Arrival Airport: {arrival_airport.get('Name', flight_data['arrival'])} ({flight_data['arrival']})",
+                f"Date: {flight_data['date']}",
+                "Seating Information:"
             ]
             for passenger in self.confirmed_passengers_stack:
-                if passenger[4] == flight_number:
-                    info_lines.append(f"Passenger ID: {passenger[0]}, Name: {passenger[1]}, Seat: {passenger[3]}, Class: {passenger[-1]}")
+                if passenger[2] == flight_number:
+                    info_lines.append(f"Seat: {passenger[3]}, Passenger: {passenger[1]}, Class: {passenger[4]}")
             return "\n".join(info_lines)
         return f"Flight {flight_number} not found."
 
@@ -149,32 +153,38 @@ class BookingManager:
         Returns:
         - A boolean indicating whether there is available space in the class.
         """
-        class_capacity = {
-            "First": 10,
-            "Business": 20,
-            "Economy": 70
-        }
-        count = 0
-        for passenger in self.confirmed_passengers_stack:
-            if passenger[2] == flight_number and passenger[4] == seat_class:  # Correct indexing
-                count += 1
-        return count < class_capacity.get(seat_class, 0)
+        flight_node = self.flights_graph.get_node(flight_number)
+        if not flight_node:
+            return False
 
-    def get_airport_info(self, airport_code):
-        """ 
-        Get detailed information about an airport.
-        
-        Args:
-        - airport_code: Code of the airport to get information for.
-        
-        Returns:
-        - A string containing the airport information.
+        seating_list = flight_node.data["seating_list"].get(seat_class, [])
+        occupied_seats = [
+            passenger[3] for passenger in self.confirmed_passengers_stack
+            if passenger[2] == flight_number and passenger[4] == seat_class
+        ]
+        return len(occupied_seats) < len(seating_list)
+
+    def generate_seat_number(self, flight_number, seat_class):
         """
-        airport = self.airport_data.get(airport_code, {})
-        if airport:
-            return f"Airport Code: {airport_code}\nName: {airport.get('Name')}\nCity: {airport.get('City')}\nState: {airport.get('State')}"
-        return f"Airport {airport_code} not found."
+        Generate the next available seat number for a specific class on a flight.
 
+        Args:
+        - flight_number: Flight number to generate the seat for.
+        - seat_class: Class of the seat.
+
+        Returns:
+        - The next available seat number as a string.
+        """
+        flight_node = self.flights_graph.get_node(flight_number)
+        seating_list = flight_node.data["seating_list"].get(seat_class, [])
+        occupied_seats = [
+            passenger[3] for passenger in self.confirmed_passengers_stack
+            if passenger[2] == flight_number and passenger[4] == seat_class
+        ]
+        for seat in seating_list:
+            if seat not in occupied_seats:
+                return f"{seat_class}-{seat}"
+        return None
 
     def is_passenger_booked_or_waitlisted(self, passenger_id, flight_number):
         """
@@ -187,33 +197,34 @@ class BookingManager:
         Returns:
         - True if the passenger is booked or waitlisted, False otherwise.
         """
-        # Check if the passenger is in the confirmed passengers stack
         for passenger in self.confirmed_passengers_stack:
             if passenger[0] == passenger_id and passenger[2] == flight_number:
                 return True
 
-        # Check if the passenger is in the waitlisted passengers queue
-        for passenger in self.waitlisted_passengers_queue:
-            if passenger[0] == passenger_id and passenger[2] == flight_number:
-                return True
+        for queue in self.waitlisted_passengers_queue.values():
+            for passenger in queue:
+                if passenger[0] == passenger_id and passenger[2] == flight_number:
+                    return True
 
         return False
-    
+
     def get_passenger_status(self, passenger_id):
-        # Check confirmed passengers
+        """
+        Get the status of a passenger.
+
+        Args:
+        - passenger_id: The ID of the passenger (Customer_phone).
+
+        Returns:
+        - A string containing the passenger's status.
+        """
         for passenger in self.confirmed_passengers_stack:
             if passenger[0] == passenger_id:
-                # Handle legacy entries (e.g., missing seat/class)
-                details = []
-                if len(passenger) > 1: details.append(f"Name: {passenger[1]}")
-                if len(passenger) > 2: details.append(f"Flight: {passenger[2]}")
-                if len(passenger) > 3: details.append(f"Seat: {passenger[3]}")
-                if len(passenger) > 4: details.append(f"Class: {passenger[4]}")
-                return f"Passenger with ID {passenger_id} is already booked: " + ", ".join(details) if details else "Legacy entry"
+                return f"Passenger {passenger[1]} is booked on flight {passenger[2]} with seat {passenger[3]} in {passenger[4]} class."
 
-        # Check waitlisted passengers
-        for passenger in self.waitlisted_passengers_queue:
-            if passenger[0] == passenger_id:
-                return f"Passenger {passenger[1]} is waitlisted for Flight {passenger[2]} in {passenger[3]} class."
+        for seat_class, queue in self.waitlisted_passengers_queue.items():
+            for position, passenger in enumerate(queue):
+                if passenger[0] == passenger_id:
+                    return f"Passenger {passenger[1]} is waitlisted for flight {passenger[2]} in {seat_class} class at position {position + 1}."
 
-        return f"Passenger {passenger_id} has no bookings/waitlists."
+        return f"Passenger {passenger_id} has no bookings or waitlists."

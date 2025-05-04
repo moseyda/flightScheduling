@@ -6,11 +6,11 @@ from sceduling.searchers import FlightHashTable, PassengerBST
 import pandas as pd
 
 # Load the flights dataset
-file_path = "c:\\Users\\s4309176\\Downloads\\flight-scheduling-main\\flights.csv"
+file_path = "../flights.csv"
 df = pd.read_csv(file_path)
 
 # Load cities.csv
-cities_file_path = "c:\\Users\\s4309176\\Downloads\\flight-scheduling-main\\cities.csv"
+cities_file_path = "../cities.csv"
 cities_df = pd.read_csv(cities_file_path)
 
 # Mock AirlineResDB data (aligned with the structure in AirlineResDB.txt)
@@ -44,12 +44,24 @@ waitlisted_passengers_queue = deque()  # Queue to store waitlisted passengers
 
 # Populate flights from the flights dataset
 for _, row in df.iterrows():
-    flight_number = row['Airline']  # Use 'Airline' as a placeholder for flight number
-    departure = row['Source']
-    arrival = row['Destination']
-    flights_stack.append([flight_number, departure, arrival])
-    flights_graph.add_node(flight_number, [flight_number, departure, arrival])
-    flights_table.insert([flight_number, departure, arrival])
+    flight_number = int(row['index'])  # Extract flight number as integer
+    if 0 <= flight_number <= 999:  # Validate flight number range
+        departure = row['Source']
+        arrival = row['Destination']
+        departure_date = row['Date_of_Journey']
+        seating_list = {
+            "First": [1, 5, 9, 11, 21],  # Example arbitrary ranges
+            "Business": list(range(6, 16)),
+            "Economy": list(range(16, 36))
+        }
+        flights_stack.append([flight_number, departure, arrival, departure_date, seating_list])
+        flights_graph.add_node(flight_number, {
+            "departure": departure,
+            "arrival": arrival,
+            "date": departure_date,
+            "seating_list": seating_list
+        })
+        flights_table.insert([flight_number, departure, arrival, departure_date])
 
 # Replace the existing Seat_reservation processing loop with:
 for reservation in airline_res_db["Seat_reservation"]:
