@@ -226,7 +226,7 @@ Leg_instance = {
 }
 
 Seat_reservation = {
-	Flight_number, Leg_number, Date:date, Seat_number, Customer_name, Customer_phone
+	Flight_number, Leg_number, Date:date, Seat_number, Customer_name, PassengerID
 	G4155, 1, 2018-01-28, 1A, Osvaldo, 555-55-5555
 	G4155, 1, 2018-01-28, 2A, Deana, 867-5309
 	G4154, 1, 2018-01-31, 1A, Mike, 555-5309

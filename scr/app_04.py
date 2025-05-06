@@ -3,37 +3,21 @@ from collections import deque
 from booking_manager_03 import BookingManager
 from cl.graph import Graph
 from sceduling.searchers import FlightHashTable, PassengerBST
+from utils import parse_airline_res_db  # Import the parsing function
 import pandas as pd
 
-# Load the flights dataset
-file_path = "../flights.csv"
-df = pd.read_csv(file_path)
+# Path to the AirlineResDB.txt file
+airline_res_db_path = "../AirlineResDB.txt"
 
-# Load cities.csv
-cities_file_path = "../cities.csv"
-cities_df = pd.read_csv(cities_file_path)
+# Parse the AirlineResDB.txt file
+airline_res_db = parse_airline_res_db(airline_res_db_path)
 
-# Mock AirlineResDB data (aligned with the structure in AirlineResDB.txt)
-airline_res_db = {
-    "Airport": {
-        "JFK": {"Name": "John F. Kennedy International Airport", "City": "New York", "State": "NY"},
-        "LAX": {"Name": "Los Angeles International Airport", "City": "Los Angeles", "State": "CA"},
-        "ORD": {"Name": "O'Hare International Airport", "City": "Chicago", "State": "IL"},
-    },
-    "Flight": {
-        "DL5841": {"Airline": "Delta Airlines", "Weekdays": "Mon, Wed, Fri"},
-        "AA1522": {"Airline": "American Airlines", "Weekdays": "Tue, Thu, Sat"},
-        "UA560": {"Airline": "United Airlines", "Weekdays": "Mon, Tue, Wed, Thu, Fri"},
-    },
-    "Seat_reservation": [
-        {"Flight_number": "DL5841", "Leg_number": 1, "Date": "2018-02-09", "Seat_number": "7A", "Customer_name": "Edgar", "Customer_phone": "555-0003"},
-        {"Flight_number": "DL5841", "Leg_number": 1, "Date": "2018-02-09", "Seat_number": "7F", "Customer_name": "Mitchell", "Customer_phone": "555-0005"},
-        {"Flight_number": "AA1522", "Leg_number": 1, "Date": "2018-08-05", "Seat_number": "6A", "Customer_name": "Dorothy", "Customer_phone": "555-0016"},
-        {"Flight_number": "AA1522", "Leg_number": 1, "Date": "2018-08-05", "Seat_number": "7E", "Customer_name": "Max", "Customer_phone": "555-0017"},
-    ],
-}
+# Extract relevant data
+airport_data = {entry["Airport_code"]: entry for entry in airline_res_db["Airport"]}
+flight_data = {entry["Flight_number"]: entry for entry in airline_res_db["Flight"]}
+seat_reservations = airline_res_db["Seat_reservation"]
 
-# Process the flights dataset into flights and passengers
+# Initialize data structures
 flights_graph = Graph()  # Graph to store flight information
 passengers_graph = Graph()  # Graph to store passenger information
 flights_table = FlightHashTable()  # Hash table to quickly search flights
@@ -42,44 +26,35 @@ flights_stack = []  # Stack to store flights
 confirmed_passengers_stack = []  # Stack to store confirmed passengers
 waitlisted_passengers_queue = deque()  # Queue to store waitlisted passengers
 
-# Populate flights from the flights dataset
-for _, row in df.iterrows():
-    flight_number = int(row['index'])  # Extract flight number as integer
-    if 0 <= flight_number <= 999:  # Validate flight number range
-        departure = row['Source']
-        arrival = row['Destination']
-        departure_date = row['Date_of_Journey']
-        seating_list = {
-            "First": [1, 5, 9, 11, 21],  # Example arbitrary ranges
-            "Business": list(range(6, 16)),
-            "Economy": list(range(16, 36))
-        }
-        flights_stack.append([flight_number, departure, arrival, departure_date, seating_list])
-        flights_graph.add_node(flight_number, {
-            "departure": departure,
-            "arrival": arrival,
-            "date": departure_date,
-            "seating_list": seating_list
-        })
-        flights_table.insert([flight_number, departure, arrival, departure_date])
+# Populate flights from the parsed data
+for flight in flight_data.values():
+    flight_number = flight["Flight_number"]
+    departure = flight.get("Departure_airport", "Unknown")
+    arrival = flight.get("Arrival_airport", "Unknown")
+    weekdays = flight.get("Weekdays", "Unknown")
+    seating_list = {
+        "First": [1, 5, 9, 11, 21],  # Example arbitrary ranges
+        "Business": list(range(6, 16)),
+        "Economy": list(range(16, 36))
+    }
+    flights_stack.append([flight_number, departure, arrival, weekdays, seating_list])
+    flights_graph.add_node(flight_number, {
+        "departure": departure,
+        "arrival": arrival,
+        "weekdays": weekdays,
+        "seating_list": seating_list
+    })
+    flights_table.insert([flight_number, departure, arrival, weekdays])
 
-# Replace the existing Seat_reservation processing loop with:
-for reservation in airline_res_db["Seat_reservation"]:
-    passenger_id = str(reservation["Customer_phone"])
+# Populate seat reservations
+for reservation in seat_reservations:
+    passenger_id = reservation["Customer_phone"]
     passenger_name = reservation["Customer_name"]
     flight_number = reservation["Flight_number"]
     seat_number = reservation["Seat_number"]
     # Infer seat class from seat number (e.g., "1A" → "First")
     seat_class = "First" if seat_number[0] in ["1", "F"] else "Business" if seat_number[0] in ["2", "B"] else "Economy"
     confirmed_passengers_stack.append([passenger_id, passenger_name, flight_number, seat_number, seat_class])
-
-# Process cities.csv for additional flight connections
-cities_df['Destinations'] = cities_df['Destinations'].fillna('')  # Handle missing values
-
-for _, row in cities_df.iterrows():
-    city = row['City']
-    destinations = str(row['Destinations']).split(',')  # Convert to string and split
-    flights_graph.add_node(city, {"destinations": destinations})
 
 # Create the BookingManager and store it in the session state
 if 'manager' not in st.session_state:
@@ -91,8 +66,8 @@ if 'manager' not in st.session_state:
         flights_stack,
         confirmed_passengers_stack,
         waitlisted_passengers_queue,
-        airline_res_db["Airport"],  # Pass airport data
-        airline_res_db["Flight"]   # Pass flight data
+        airport_data,  # Pass airport data
+        flight_data    # Pass flight data
     )
 else:
     manager = st.session_state['manager']
@@ -101,27 +76,19 @@ else:
 def book_passenger():
     # Check if all the required details are entered
     if st.session_state.booking_passenger_name and st.session_state.booking_passenger_id and st.session_state.booking_flight_number and st.session_state.seat_class:
-        passenger_id = st.session_state.booking_passenger_id  # Keep passenger_id as a string
+        passenger_id = st.session_state.booking_passenger_id  # Keep PassengerID as a string
         flight_number = st.session_state.booking_flight_number
 
-        # Check if the passenger is already booked or waitlisted
-        if st.session_state['manager'].is_passenger_booked_or_waitlisted(passenger_id, flight_number):
-            st.error(f"Passenger {st.session_state.booking_passenger_name} ({passenger_id}) is already booked or waitlisted for flight {flight_number}.")
+        # Attempt to book the passenger
+        result = st.session_state['manager'].book_passenger(
+            [passenger_id, st.session_state.booking_passenger_name],
+            flight_number,
+            st.session_state.seat_class
+        )
+        if "already booked or is waitlisted" in result:
+            st.error(result)
         else:
-            # Attempt to book the passenger
-            result = st.session_state['manager'].book_passenger(
-                [passenger_id, st.session_state.booking_passenger_name, "Pending"],
-                flight_number,
-                st.session_state.seat_class
-            )
-            if isinstance(result, str):
-                st.success(result)
-            else:
-                # If booking failed, add the passenger to the waitlist
-                st.session_state['manager'].waitlisted_passengers_queue.append(
-                    [passenger_id, st.session_state.booking_passenger_name, "Waitlisted", flight_number, st.session_state.seat_class]
-                )
-                st.success(f"Passenger {st.session_state.booking_passenger_name} ({passenger_id}) added to waitlist for flight {flight_number} in {st.session_state.seat_class} class.")
+            st.success(result)
     else:
         st.error("Please enter all the details.")
 
