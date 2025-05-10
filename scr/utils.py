@@ -55,6 +55,53 @@ def parse_airline_res_db(file_path):
                 ))
                 for line in lines
             ]
-        # Add parsing logic for other sections as needed
+        elif section == "Leg_instance":
+            data[section] = [
+                dict(zip(
+                    ["Flight_number", "Leg_number", "Date", "Number_of_available_seats", "Airplane_id", "Departure_airport_code", "Departure_time", "Arrival_airport_code", "Arrival_time"],
+                    line.split(", ")
+                ))
+                for line in lines
+            ]
+        elif section == "Fare":
+            data[section] = [
+                dict(zip(
+                    ["Flight_number", "Fare_code", "Amount", "Restrictions"],
+                    line.split(", ")
+                ))
+                for line in lines
+            ]
+        elif section == "Airplane_type":
+            data[section] = [
+                dict(zip(
+                    ["Airplane_type_name", "Max_seats", "Company"],
+                    line.split(", ")
+                ))
+                for line in lines
+            ]
+        elif section == "Airplane":
+            data[section] = [
+                dict(zip(
+                    ["Airplane_id", "Total_number_of_seats", "Airplane_type"],
+                    line.split(", ")
+                ))
+                for line in lines
+            ]
+        elif section == "Can_land":
+            data[section] = [
+                dict(zip(
+                    ["Airplane_type_name", "Airport_code"],
+                    line.split(", ")
+                ))
+                for line in lines
+            ]
+        elif section == "Flight_leg":
+            data[section] = [
+                dict(zip(
+                    ["Flight_number", "Leg_number", "Departure_airport_code", "Scheduled_departure_time", "Arrival_airport_code", "Scheduled_arrival_time"],
+                    line.split(", ")
+                ))
+                for line in lines
+            ]
 
     return data

@@ -1,8 +1,9 @@
 from collections import deque
 from sceduling.sorters import quick_sort, radix_sort
+import re
 
 class BookingManager:
-    def __init__(self, flights_graph, passengers_graph, flights_table, passengers_tree, flights_stack, confirmed_passengers_stack, waitlisted_passengers_queue, airport_data, flight_data):
+    def __init__(self, flights_graph, passengers_graph, flights_table, passengers_tree, flights_stack, confirmed_passengers_stack, waitlisted_passengers_queue, airport_data, flight_data, leg_instance_data):
         self.flights_graph = flights_graph
         self.passengers_graph = passengers_graph
         self.flights_table = flights_table
@@ -16,6 +17,7 @@ class BookingManager:
         }
         self.airport_data = airport_data  # Use parsed airport data
         self.flight_data = flight_data  # Use parsed flight data
+        self.leg_instance_data = leg_instance_data # Use parsed leg instance data
 
     def book_passenger(self, passenger, flight_number, seat_class):
         """
@@ -27,28 +29,58 @@ class BookingManager:
         - seat_class: Class of the seat to book.
 
         Returns:
-        - A string indicating the booking status.
+        - A string indicating the booking or waitlist status.
         """
+        passenger_id = passenger[0]
+
+        # Validate PassengerID format
+        if not re.match(r"^555-\d{4}$", passenger_id):
+            return "PassengerID must be in the format '555-xxxx' (e.g., 555-1234)."
+
         # Check if the PassengerID is already booked or waitlisted
-        if self.is_passenger_booked_or_waitlisted(passenger[0], flight_number):
-            return f"Passenger with ID {passenger[0]} has already booked or is waitlisted for flight {flight_number}."
+        if self.is_passenger_id_exists(passenger_id):
+            return f"Passenger with ID {passenger_id} has already been booked on another flight."
 
-        # Check if there are available seats in the specified class
+        if self.is_passenger_booked_or_waitlisted(passenger_id, flight_number):
+            return f"Passenger with ID {passenger_id} has already booked or is waitlisted for flight {flight_number}."
+
+        # Check seat availability
         if not self.is_seat_number_available(flight_number, seat_class):
-            # No seats available, add to the waitlist
-            waitlisted_passenger = [passenger[0], passenger[1], flight_number, seat_class]
-            self.waitlisted_passengers_queue[seat_class].append(waitlisted_passenger)
-            return f"Passenger {passenger[1]} added to waitlist for flight {flight_number} in {seat_class} class."
+            # Add to waitlist if no seats are available
+            return self.add_to_waitlist(passenger, flight_number, seat_class)
 
-        # Seats are available, generate a seat number
+        # Generate a seat number and book the passenger
         seat_number = self.generate_seat_number(flight_number, seat_class)
         if seat_number == "No available seats in this class.":
-            return f"Seat already taken or no available seats for flight {flight_number} in {seat_class} class."
+            return self.add_to_waitlist(passenger, flight_number, seat_class)
 
-        # Book the passenger
-        confirmed_passenger = [passenger[0], passenger[1], flight_number, seat_number, seat_class]
+        confirmed_passenger = [passenger_id, passenger[1], flight_number, seat_number, seat_class]
         self.confirmed_passengers_stack.append(confirmed_passenger)
         return f"Passenger {passenger[1]} booked on flight {flight_number} with seat number {seat_number} in {seat_class} class."
+    
+    
+    def is_passenger_id_exists(self, passenger_id):
+        """
+        Check if a PassengerID exists in any confirmed bookings or waitlists.
+
+        Args:
+        - passenger_id: The PassengerID to check.
+
+        Returns:
+        - True if the PassengerID exists, False otherwise.
+        """
+        # Check confirmed passengers
+        for passenger in self.confirmed_passengers_stack:
+            if passenger[0] == passenger_id:
+                return True
+
+        # Check waitlisted passengers
+        for queue in self.waitlisted_passengers_queue.values():
+            for waitlisted_passenger in queue:
+                if waitlisted_passenger[0] == passenger_id:
+                    return True
+
+        return False
 
     def cancel_booking(self, passenger_id, flight_number):
         """ 
@@ -114,24 +146,43 @@ class BookingManager:
         Returns:
         - A string containing the flight's information or an error message if not found.
         """
+        # Retrieve flight data
         flight_node = self.flights_graph.get_node(flight_number)
         if flight_node:
             flight_data = flight_node.data
-            departure_airport = self.airport_data.get(flight_data["departure"], {})
-            arrival_airport = self.airport_data.get(flight_data["arrival"], {})
+
+            # Retrieve leg instance data for departure and arrival codes
+            leg_instance = next(
+                (leg for leg in self.leg_instance_data
+                if leg["Flight_number"] == flight_number),
+                None
+            )
+            if leg_instance:
+                departure_code = leg_instance.get("Departure_airport_code", "Unknown")
+                arrival_code = leg_instance.get("Arrival_airport_code", "Unknown")
+            else:
+                departure_code = "Unknown"
+                arrival_code = "Unknown"
+
+            # Retrieve airport details from airport_data
+            departure_airport = self.airport_data.get(departure_code, {})
+            arrival_airport = self.airport_data.get(arrival_code, {})
+
             airline = self.flight_data.get(flight_number, {}).get("Airline", "Unknown")
             info_lines = [
                 f"Flight Number: {flight_number}",
                 f"Airline: {airline}",
-                f"Departure Airport: {departure_airport.get('Name', flight_data['departure'])} ({flight_data['departure']})",
-                f"Arrival Airport: {arrival_airport.get('Name', flight_data['arrival'])} ({flight_data['arrival']})",
+                f"Departure Airport: {departure_airport.get('Name', departure_code)} ({departure_code})",
+                f"Arrival Airport: {arrival_airport.get('Name', arrival_code)} ({arrival_code})",
                 f"Weekdays: {flight_data.get('weekdays', 'Unknown')}",
                 "Seating Information:"
             ]
             for passenger in self.confirmed_passengers_stack:
                 # Ensure the passenger data structure is valid
                 if len(passenger) >= 5 and passenger[2] == flight_number:
-                    info_lines.append(f"Seat: {passenger[3]}, Passenger: {passenger[1]}, Class: {passenger[4]}")
+                    info_lines.append(
+                        f"Seat: {passenger[3]}, Passenger: {passenger[1]}, PassengerID: {passenger[0]}, Class: {passenger[4]}"
+                    )
             return "\n".join(info_lines)
         return f"Flight {flight_number} not found."
 
@@ -179,7 +230,7 @@ class BookingManager:
         ]
 
         for seat in seating_list:
-            seat_number = f"{seat}{seat_class[0]}"  # Format seat number as "6B" for Business, "16E" for Economy, etc.
+            seat_number = f"{seat}{seat_class[0]}" 
             if seat_number not in occupied_seats:
                 return seat_number
 
@@ -230,3 +281,64 @@ class BookingManager:
                     return True
 
         return False
+    
+
+    def add_to_waitlist(self, passenger, flight_number, seat_class):
+        """
+        Add a passenger to the waitlist for a specific flight and class.
+
+        Args:
+        - passenger: List containing passenger information [PassengerID, Passenger_name].
+        - flight_number: Flight number to add the passenger to the waitlist for.
+        - seat_class: Class of the seat to waitlist the passenger for.
+
+        Returns:
+        - A string indicating the waitlist status.
+        """
+        passenger_id = passenger[0]
+
+        # Check if the PassengerID is already waitlisted for the same flight and class
+        for waitlisted_passenger in self.waitlisted_passengers_queue[seat_class]:
+            if waitlisted_passenger[0] == passenger_id and waitlisted_passenger[2] == flight_number:
+                return f"Passenger with ID {passenger_id} is already waitlisted for flight {flight_number} in {seat_class} class."
+
+        # Add the passenger to the waitlist
+        self.waitlisted_passengers_queue[seat_class].append([passenger_id, passenger[1], flight_number])
+        return f"Passenger {passenger[1]} added to the waitlist for flight {flight_number} in {seat_class} class."
+    
+
+    def get_waitlist(self, flight_number):
+        """
+        Retrieve the waitlist for a specific flight.
+
+        Args:
+        - flight_number: The flight number to retrieve the waitlist for.
+
+        Returns:
+        - A dictionary containing the waitlist for each class.
+        """
+        waitlist = {}
+        for seat_class, queue in self.waitlisted_passengers_queue.items():
+            waitlist[seat_class] = [
+                passenger for passenger in queue if passenger[2] == flight_number
+            ]
+        return waitlist
+    
+    def remove_from_waitlist(self, passenger_id, flight_number, seat_class):
+        """
+        Remove a passenger from the waitlist.
+
+        Args:
+        - passenger_id: The ID of the passenger to remove.
+        - flight_number: The flight number to remove the passenger from.
+        - seat_class: The class to remove the passenger from.
+
+        Returns:
+        - A string indicating the removal status.
+        """
+        queue = self.waitlisted_passengers_queue[seat_class]
+        for passenger in queue:
+            if passenger[0] == passenger_id and passenger[2] == flight_number:
+                queue.remove(passenger)
+                return f"Passenger {passenger_id} removed from the waitlist for flight {flight_number} in {seat_class} class."
+        return f"Passenger {passenger_id} not found on the waitlist for flight {flight_number} in {seat_class} class."
