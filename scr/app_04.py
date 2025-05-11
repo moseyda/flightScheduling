@@ -34,6 +34,17 @@ for flight in flight_data.values():
     flight_number = flight["Flight_number"]
     departure = flight.get("Departure_airport", "Unknown")
     arrival = flight.get("Arrival_airport", "Unknown")
+    flight_leg = next(
+        (leg for leg in airline_res_db["Flight_leg"] if leg["Flight_number"] == flight_number),
+        None
+    )
+    if flight_leg:
+        departure = flight_leg["Departure_airport_code"]
+        arrival = flight_leg["Arrival_airport_code"]
+    else:
+        departure = "Unknown"
+        arrival = "Unknown"
+        
     weekdays = flight.get("Weekdays", "Unknown")
     seating_list = {
         "First": [1, 5, 9, 11, 21],
@@ -69,8 +80,8 @@ if 'manager' not in st.session_state:
         flights_stack,
         confirmed_passengers_stack,
         waitlisted_passengers_queue,
-        airport_data,  # Pass airport data
-        flight_data,    # Pass flight data
+        airport_data,
+        flight_data,
         leg_instance_data
     )
 else:
@@ -86,13 +97,31 @@ def book_passenger():
 
         flight_number = st.session_state.booking_flight_number
 
+        # Check if the flight has "Unknown" departure or arrival
+        flight = next((f for f in st.session_state['manager'].flights_stack if f[0] == flight_number), None)
+        if flight and (flight[1] == "Unknown" or flight[2] == "Unknown"):
+            # Validate and update departure and arrival airports
+            departure = st.session_state.get('booking_departure_airport', '').strip()
+            arrival = st.session_state.get('booking_arrival_airport', '').strip()
+
+            if not departure or not arrival:
+                return "Please enter both departure and arrival airports."
+
+            if departure not in st.session_state['manager'].airport_data or arrival not in st.session_state['manager'].airport_data:
+                return "Invalid airport codes. Please check and try again."
+
+            # Update the flight details
+            flight[1] = departure
+            flight[2] = arrival
+
+        # Proceed with booking
         result = st.session_state['manager'].book_passenger(
             [passenger_id, st.session_state.booking_passenger_name],
             flight_number,
             st.session_state.seat_class
         )
 
-        return result  # Always return full message
+        return result
     return "Please enter all the details."
 
 
@@ -125,7 +154,7 @@ def cancel_passenger():
 def check_passenger_status():
     # Check if the passenger ID is entered
     if st.session_state.status_passenger_id:
-        passenger_id = st.session_state.status_passenger_id  # Keep passenger_id as a string
+        passenger_id = st.session_state.status_passenger_id
 
         # Validate PassengerID format (555-xxxx)
         if not re.match(r"^555-\d{4}$", passenger_id):
@@ -154,6 +183,81 @@ def check_flight_info():
     else:
         st.error("Please enter the flight number.")
 
+        
+
+def get_available_flights():
+    """
+    Fetch and display the list of available flights with relevant details.
+    """
+    # Add search and sort options
+    st.write("### Search and Sort Flights")
+    search_option = st.selectbox("Search by", ["None", "Flight Number", "Departure Airport", "Arrival Airport"], key="search_option")
+    search_query = st.text_input("Enter search query", key="search_query", placeholder="E.g., A123 or SFO")
+    sort_option = st.selectbox("Sort by", ["None", "Flight Number", "Departure Airport", "Arrival Airport", "Available Seats"], key="sort_option")
+
+    flights_info = []
+    for flight in st.session_state['manager'].flights_stack:
+        flight_number, departure, arrival, weekdays, seating_list = flight
+
+        # Count booked and available seats by class
+        booked_seats = {cls: 0 for cls in seating_list.keys()}
+        available_seats = {cls: len(seats) for cls, seats in seating_list.items()}
+
+        for passenger in st.session_state['manager'].confirmed_passengers_stack:
+            if passenger[2] == flight_number:
+                seat_class = passenger[4]
+                booked_seats[seat_class] += 1
+                available_seats[seat_class] -= 1
+
+        # Retrieve departure and arrival airport names
+        departure_airport = st.session_state['manager'].airport_data.get(departure, {}).get("Name", departure)
+        arrival_airport = st.session_state['manager'].airport_data.get(arrival, {}).get("Name", arrival)
+
+        # Add flight details to the list
+        flights_info.append({
+            "Flight Number": flight_number,
+            "Departure": f"{departure_airport} ({departure})",
+            "Arrival": f"{arrival_airport} ({arrival})",
+            "Weekdays": weekdays,
+            "Booked Seats": booked_seats,
+            "Available Seats": sum(available_seats.values())
+        })
+
+    # Apply search filter
+    if search_option != "None" and search_query:
+        if search_option == "Flight Number":
+            flights_info = [flight for flight in flights_info if search_query.lower() in flight["Flight Number"].lower()]
+        elif search_option == "Departure Airport":
+            flights_info = [flight for flight in flights_info if search_query.lower() in flight["Departure"].lower()]
+        elif search_option == "Arrival Airport":
+            flights_info = [flight for flight in flights_info if search_query.lower() in flight["Arrival"].lower()]
+
+    # Apply sorting
+    if sort_option != "None":
+        if sort_option == "Flight Number":
+            flights_info = sorted(flights_info, key=lambda x: x["Flight Number"])
+        elif sort_option == "Departure Airport":
+            flights_info = sorted(flights_info, key=lambda x: x["Departure"])
+        elif sort_option == "Arrival Airport":
+            flights_info = sorted(flights_info, key=lambda x: x["Arrival"])
+        elif sort_option == "Available Seats":
+            flights_info = sorted(flights_info, key=lambda x: x["Available Seats"], reverse=True)
+
+    # Display the flight information
+    if flights_info:
+        st.write("### Available Flights")
+        for flight in flights_info:
+            st.write(f"**Flight Number:** {flight['Flight Number']}")
+            st.write(f"**Departure:** {flight['Departure']}")
+            st.write(f"**Arrival:** {flight['Arrival']}")
+            st.write(f"**Weekdays:** {flight['Weekdays']}")
+            st.write("**Seats by Class:**")
+            for cls, count in flight["Booked Seats"].items():
+                st.write(f"- {cls}: {count} booked, {flight['Available Seats']} available")
+            st.markdown("---")
+    else:
+        st.info("No flights available.")
+
 
 def main():
     if "nav_option" not in st.session_state:
@@ -168,7 +272,8 @@ def main():
         "Cancel Booking": "🗑️ Cancel Booking",
         "Check Status": "🔍 Check Status",
         "Flight Information": "✈️ Flight Information",
-        "Manage Waitlist": "🕒 Manage Waitlist"        
+        "Manage Waitlist": "🕒 Manage Waitlist",
+        "Available Flights": "🛫 Available Flights"        
     }
 
     nav_cols = st.columns(len(nav_buttons))
@@ -179,22 +284,37 @@ def main():
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # --- Section content based on selection ---
+    if st.session_state.nav_option == "Available Flights":
+        with st.expander("🛫 View Available Flights", expanded=True):
+            get_available_flights()
+
+    # --- Section content based on selection ---
     if st.session_state.nav_option == "Book Passenger":
         with st.expander("📅 Book a Passenger", expanded=False):
+            st.markdown(
+            "ℹ️ **Note:** If the flight is not scheduled yet, you will be prompted to enter Departure and Arrival airport codes."
+            )
             st.text_input("Enter Passenger Name", value=st.session_state.get('booking_passenger_name', ''), key='booking_passenger_name', placeholder="John Doe")
             st.text_input("Enter Passenger ID", value=st.session_state.get('booking_passenger_id', ''), key='booking_passenger_id', placeholder="555-xxxx")
             st.text_input("Enter Flight Number", value=st.session_state.get('booking_flight_number', ''), key='booking_flight_number', placeholder="A123")
             seat_classes = ["First", "Business", "Economy"]
             st.selectbox("Choose a Class", seat_classes, index=seat_classes.index(st.session_state.get('seat_class', seat_classes[0])), key='seat_class')
 
+            # Check if the flight requires departure and arrival input
+            flight_number = st.session_state.get('booking_flight_number', '').strip()
+            flight = next((f for f in st.session_state['manager'].flights_stack if f[0] == flight_number), None)
+            if flight and (flight[1] == "Unknown" or flight[2] == "Unknown"):
+                st.text_input("Enter Departure Airport Code", key="booking_departure_airport", placeholder="E.g., SFO")
+                st.text_input("Enter Arrival Airport Code", key="booking_arrival_airport", placeholder="E.g., JFK")
+
             if st.button("✈️ Book Passenger", key="book_passenger"):
                 result = book_passenger()
                 if result:
-                    if "booked on flight" in result.lower():  # Check for success message
+                    if "booked on flight" in result.lower():
                         st.success(result, icon="✅")
-                    elif "waitlist" in result.lower():  # Check for waitlist message
+                    elif "waitlist" in result.lower():
                         st.warning(result, icon="⏳")
-                    else:  # Handle all other cases as errors
+                    else: 
                         st.error(result)
 
 

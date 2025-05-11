@@ -304,7 +304,7 @@ class BookingManager:
 
         # Add the passenger to the waitlist
         self.waitlisted_passengers_queue[seat_class].append([passenger_id, passenger[1], flight_number])
-        return f"Passenger {passenger[1]} added to the waitlist for flight {flight_number} in {seat_class} class."
+        return f"OOPS! No seats available for selected class. Passenger {passenger[1]} added to the waitlist for flight {flight_number} in {seat_class} class."
     
 
     def get_waitlist(self, flight_number):
