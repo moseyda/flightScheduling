@@ -1,5 +1,5 @@
 from collections import deque
-from sceduling.sorters import quick_sort, radix_sort
+from sceduling.sorters import merge_sort, quick_sort 
 import re
 
 class BookingManager:
@@ -342,3 +342,30 @@ class BookingManager:
                 queue.remove(passenger)
                 return f"Passenger {passenger_id} removed from the waitlist for flight {flight_number} in {seat_class} class."
         return f"Passenger {passenger_id} not found on the waitlist for flight {flight_number} in {seat_class} class."
+    
+
+    def sort_confirmed_passengers(self, sort_by="Passenger Name"):
+        """
+        Sort confirmed passengers by a given attribute.
+        Args:
+        - sort_by: The attribute to sort by (e.g., "Passenger Name", "Seat Class").
+        """
+        if sort_by == "Passenger Name":
+            self.confirmed_passengers_stack = merge_sort(self.confirmed_passengers_stack, key=lambda x: x[1])  # Use Merge Sort
+        elif sort_by == "Seat Class":
+            self.confirmed_passengers_stack = quick_sort(self.confirmed_passengers_stack, key=lambda x: x[4])  # Use Quick Sort
+
+    def sort_waitlist(self, flight_number, sort_by="Passenger Name"):
+        """
+        Sort the waitlist for a specific flight by a given attribute.
+        Args:
+        - flight_number: The flight number to sort the waitlist for.
+        - sort_by: The attribute to sort by (e.g., "Passenger Name").
+        """
+        for seat_class, queue in self.waitlisted_passengers_queue.items():
+            waitlist = [p for p in queue if p[2] == flight_number]
+            if sort_by == "Passenger Name":
+                sorted_waitlist = merge_sort(waitlist, key=lambda x: x[1])  # Use Merge Sort
+            elif sort_by == "Position":
+                sorted_waitlist = quick_sort(waitlist, key=lambda x: queue.index(x))  # Use Quick Sort
+            self.waitlisted_passengers_queue[seat_class] = deque(sorted_waitlist)

@@ -2,11 +2,13 @@ import streamlit as st
 from collections import deque
 from booking_manager_03 import BookingManager
 from cl.graph import Graph
-from sceduling.searchers import FlightHashTable, PassengerBST
+from sceduling.searchers import FlightRedBlackTree, PassengerBST
 from utils import parse_airline_res_db
 import pandas as pd
 import re 
 from streamlit.components.v1 import html
+from sceduling.sorters import merge_sort, quick_sort, radix_sort  # Import sorting algorithms
+
 
 # Path to the AirlineResDB.txt file
 airline_res_db_path = "../AirlineResDB.txt"
@@ -23,7 +25,7 @@ leg_instance_data = airline_res_db["Leg_instance"]
 # Initialize data structures
 flights_graph = Graph()  # Graph to store flight information
 passengers_graph = Graph()  # Graph to store passenger information
-flights_table = FlightHashTable()  # Hash table to quickly search flights
+flights_table = FlightRedBlackTree()  # RedBlackTree table to quickly search flights
 passengers_tree = PassengerBST()  # Binary search tree to quickly search passengers
 flights_stack = []  # Stack to store flights
 confirmed_passengers_stack = []  # Stack to store confirmed passengers
@@ -191,6 +193,9 @@ def get_available_flights():
     """
     # Add search and sort options
     st.write("### Search and Sort Flights")
+    st.markdown(
+        "ℹ️ **Note:** If the flight is not scheduled yet/or has no bookings, the Departure and Arrival airport codes will be displayed as *Unknown*."
+        )
     search_option = st.selectbox("Search by", ["None", "Flight Number", "Departure Airport", "Arrival Airport"], key="search_option")
     search_query = st.text_input("Enter search query", key="search_query", placeholder="E.g., A123 or SFO")
     sort_option = st.selectbox("Sort by", ["None", "Flight Number", "Departure Airport", "Arrival Airport", "Available Seats"], key="sort_option")
@@ -235,13 +240,13 @@ def get_available_flights():
     # Apply sorting
     if sort_option != "None":
         if sort_option == "Flight Number":
-            flights_info = sorted(flights_info, key=lambda x: x["Flight Number"])
+            flights_info = radix_sort(flights_info, get_attribute=lambda x: x["Flight Number"])
         elif sort_option == "Departure Airport":
-            flights_info = sorted(flights_info, key=lambda x: x["Departure"])
+            flights_info = merge_sort(flights_info, key=lambda x: x["Departure"])
         elif sort_option == "Arrival Airport":
-            flights_info = sorted(flights_info, key=lambda x: x["Arrival"])
+            flights_info = merge_sort(flights_info, key=lambda x: x["Arrival"])
         elif sort_option == "Available Seats":
-            flights_info = sorted(flights_info, key=lambda x: x["Available Seats"], reverse=True)
+            flights_info = quick_sort(flights_info, key=lambda x: x["Available Seats"])
 
     # Display the flight information
     if flights_info:
