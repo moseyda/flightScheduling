@@ -46,8 +46,8 @@ flight-scheduling
 │       └── 📄 passenger_data.py       # storing passengers data
 │   ├── 📁 cl                 # class files 
 │       └── 📄 graph.py       # graph structure
-│   ├── 📁 sceduling                 # Algorithms
-│       └── 📄 searchers.py       # Searchering algorithms
+│   ├── 📁 algorithms                # Algorithms
+│       └── 📄 searchers.py       # Searching algorithms
 │       └── 📄 sorters.py       # Sorting algorithms
 └── 📄 requirements.txt     # Project dependencies
 │

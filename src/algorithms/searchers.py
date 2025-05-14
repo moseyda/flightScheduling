@@ -1,5 +1,5 @@
 from cl.graph import Node as Node
-from sceduling.sorters import merge_sort, quick_sort, radix_sort
+from algorithms.sorters import merge_sort, quick_sort, radix_sort
 
 
 class RedBlackNode:

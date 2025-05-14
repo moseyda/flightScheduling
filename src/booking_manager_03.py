@@ -1,5 +1,5 @@
 from collections import deque
-from sceduling.sorters import merge_sort, quick_sort 
+from algorithms.sorters import merge_sort, quick_sort 
 import re
 
 class BookingManager:
@@ -160,9 +160,17 @@ class BookingManager:
             if leg_instance:
                 departure_code = leg_instance.get("Departure_airport_code", "Unknown")
                 arrival_code = leg_instance.get("Arrival_airport_code", "Unknown")
+                number_of_available_seats = leg_instance.get("Number_of_available_seats", "Unknown")
+                date = leg_instance.get("Date", "Unknown")
+                departure_time = leg_instance.get("Departure_time", "Unknown")
+                arrival_time = leg_instance.get("Arrival_time", "Unknown")
             else:
                 departure_code = "Unknown"
                 arrival_code = "Unknown"
+                number_of_available_seats = "Unknown"
+                date = "Unknown"
+                departure_time = "Unknown"
+                arrival_time = "Unknown"
 
             # Retrieve airport details from airport_data
             departure_airport = self.airport_data.get(departure_code, {})
@@ -175,6 +183,10 @@ class BookingManager:
                 f"Departure Airport: {departure_airport.get('Name', departure_code)} ({departure_code})",
                 f"Arrival Airport: {arrival_airport.get('Name', arrival_code)} ({arrival_code})",
                 f"Weekdays: {flight_data.get('weekdays', 'Unknown')}",
+                f"Date: {date}",
+                f"Departure Time: {departure_time}",
+                f"Arrival Time: {arrival_time}",
+                f"Number of Available Seats: {number_of_available_seats}",
                 "Seating Information:"
             ]
             for passenger in self.confirmed_passengers_stack:
@@ -315,12 +327,13 @@ class BookingManager:
         - flight_number: The flight number to retrieve the waitlist for.
 
         Returns:
-        - A dictionary containing the waitlist for each class.
+        - A dictionary containing the waitlist for each class, including passenger positions.
         """
         waitlist = {}
         for seat_class, queue in self.waitlisted_passengers_queue.items():
             waitlist[seat_class] = [
-                passenger for passenger in queue if passenger[2] == flight_number
+                {"position": idx + 1, "passenger_id": passenger[0], "passenger_name": passenger[1]}
+                for idx, passenger in enumerate(queue) if passenger[2] == flight_number
             ]
         return waitlist
     

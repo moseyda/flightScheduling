@@ -2,12 +2,12 @@ import streamlit as st
 from collections import deque
 from booking_manager_03 import BookingManager
 from cl.graph import Graph
-from sceduling.searchers import FlightRedBlackTree, PassengerBST
+from algorithms.searchers import FlightRedBlackTree, PassengerBST
 from utils import parse_airline_res_db
 import pandas as pd
 import re 
 from streamlit.components.v1 import html
-from sceduling.sorters import merge_sort, quick_sort, radix_sort  # Import sorting algorithms
+from algorithms.sorters import merge_sort, quick_sort, radix_sort
 
 
 # Path to the AirlineResDB.txt file
@@ -367,12 +367,19 @@ def main():
                         st.write("### Current Waitlist:")
                         for seat_class, passengers in waitlist.items():
                             st.write(f"**{seat_class} Class:**")
-                            for passenger in passengers:
-                                st.write(f"- {passenger[1]} (ID: {passenger[0]})")
+                            if passengers:
+                                for passenger in passengers:
+                                    st.write(
+                                        f"- Position {passenger['position']}: {passenger['passenger_name']} "
+                                        f"(ID: {passenger['passenger_id']})"
+                                    )
+                            else:
+                                st.write("No passengers in this class.")
                     else:
                         st.info("No passengers on the waitlist for this flight.")
                 else:
                     st.error("Please enter the flight number.")
+
 
             st.markdown("---")
         seat_classes = ["First", "Business", "Economy"]
