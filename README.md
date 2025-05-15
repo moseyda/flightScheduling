@@ -68,18 +68,22 @@ flight-scheduling
 ## Getting Started
 
 ### Prerequisites
-- Python 3.8 or above
+- Python 3.8 or above.
+
 
 ### Installation
 Clone the repository to your local machine:
 
-git clone https://github.com/yourusername/flight-scheduling-system.git
+git clone https://github.com/moseyda/flightScheduling.git
 
 
 Navigate to the cloned directory:
 
-cd flight-scheduling-system
+cd flightScheduling
 
+Use Conda environment which has all required imports pre-installed.
+
+OR:
 
 Install the required dependencies:
 
