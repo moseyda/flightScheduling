@@ -11,7 +11,7 @@ from algorithms.sorters import merge_sort, quick_sort, radix_sort
 
 
 # Path to the AirlineResDB.txt file
-airline_res_db_path = "../AirlineResDB.txt"
+airline_res_db_path = "AirlineResDB.txt"
 
 # Parse the AirlineResDB.txt file
 airline_res_db = parse_airline_res_db(airline_res_db_path)
