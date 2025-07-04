@@ -10,8 +10,12 @@ from streamlit.components.v1 import html
 from algorithms.sorters import merge_sort, quick_sort, radix_sort
 
 
-# Path to the AirlineResDB.txt file
-airline_res_db_path = "AirlineResDB.txt"
+# Path to the AirlineResDB.txt file (use the commented out line 14 in local environment only)
+# airline_res_db_path = "AirlineResDB.txt"
+
+# Dynamically get the path to the current script's directory (for Streamlit Deployment)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+airline_res_db_path = os.path.join(script_dir, 'AirlineResDB.txt')
 
 # Parse the AirlineResDB.txt file
 airline_res_db = parse_airline_res_db(airline_res_db_path)
