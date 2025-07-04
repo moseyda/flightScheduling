@@ -95,7 +95,7 @@ Run the system with:
 
 streamlit run app_04.py
 
-or visit: https://flightscheduling1.streamlit.app/
+or visit: (https://flightscheduling.streamlit.app/)
 
 
 
