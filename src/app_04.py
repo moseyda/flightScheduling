@@ -6,6 +6,7 @@ from algorithms.searchers import FlightRedBlackTree, PassengerBST
 from utils import parse_airline_res_db
 import pandas as pd
 import re 
+import os
 from streamlit.components.v1 import html
 from algorithms.sorters import merge_sort, quick_sort, radix_sort
 
